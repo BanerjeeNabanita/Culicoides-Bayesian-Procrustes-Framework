@@ -1,0 +1,286 @@
+# Generalized Framework for Wing Landmark Data Loading and Bayesian Analysis
+# -----------------------------
+# 1. Load Required Libraries
+# -----------------------------
+library(shapes)
+library(Morpho)
+library(BPviGM1)
+library(scales)
+library(readxl)
+
+# -----------------------------
+# 2. Set Parameters
+# -----------------------------
+set.seed(12345)
+num_landmarks <- 11
+num_dimensions <- 2
+
+# Define sample sizes (replace with your counts)
+num_female <- 57  #(IF)sample number in our data (C.innoxius female)
+num_male <- 48   #(IM)sample number in our data (C.innoxius male)
+
+# Initialize arrays for storing landmark coordinates
+IFq <- array(NA, dim = c(num_landmarks, num_dimensions, num_female)) #IF for C. innoxius female
+IMq <- array(NA, dim = c(num_landmarks, num_dimensions, num_male))    #IM for C. innoxius male
+
+#--------------------------------
+# 3. Import File
+#---------------------------------
+# A. Place the Excel files in a specific folder
+# B. Manually Importing and Assigning Wing Landmark Data into Array
+# Load female data/ male data
+#file_path <- "path_to_your_file.xlsx"   
+Excel_file <- as.matrix(read_excel(file_path, col_names = FALSE))
+
+# Female specimens
+Species1_Female <- as.matrix(read_excel("Insect_Wing_Landmarks/Species1_Female.xlsx", col_names = FALSE))
+Species2_Female <- as.matrix(read_excel("Insect_Wing_Landmarks/Species2_Female.xlsx", col_names = FALSE))
+Species3_Female <- as.matrix(read_excel("Insect_Wing_Landmarks/Species3_Female.xlsx", col_names = FALSE))
+
+# Male specimens
+Species1_Male <- as.matrix(read_excel("Insect_Wing_Landmarks/Species1_Male.xlsx", col_names = FALSE))  ## NOTE: Replace "Species1_Female" with real specimen variable names (e.g.,ADSIn34FR)
+Species2_Male <- as.matrix(read_excel("Insect_Wing_Landmarks/Species2_Male.xlsx", col_names = FALSE))
+Species3_Male <- as.matrix(read_excel("Insect_Wing_Landmarks/Species3_Male.xlsx", col_names = FALSE))
+
+#--------------------------------------
+# 4. Filling Data into a 3D Array
+#--------------------------------------
+## Note:
+# i -> landmark index (1–11)
+# j -> coordinate index (1 = X, 2 = Y)
+# n -> specimen index (1 to num_female or num_male)
+# repeat it for all data
+
+for(i in 1:11)
+{
+  for(j in 1:2)
+  {
+    IFq[i,j,n]=Species1_Female[i,j]      
+  }
+}
+
+### Example ###
+for(i in 1:11)
+{
+  for(j in 1:2)
+  {
+    IFq[i,j,1]=ADSIn34FR[i,j]      
+  }
+}
+
+#-----------------------------------------------------------------------------
+# 5. Performing Generalized Procrustes Alignment (GPA) on wing landmark array
+#-----------------------------------------------------------------------------
+GPA_result <- procGPA(WingArray)   # WingArray-> IFq, IMq for our data set or any other insect dataset
+Aligned_Landmarks <- GPA_result$rotated  # extracts only the aligned (shape) data (XXqq)
+
+###Example###
+#IFqqq=procGPA(IFq)    #IFqq -> wingAlinedArray for C. innoxius female
+#IFqq=IFqqq$rotated
+
+# -----------------------------------------------
+# 6. Bayesian Shape Variance Estimation (Example)
+# -----------------------------------------------
+#n_values represents different sample sizes to test convergence or subsampling behavior
+#n_values <- c(n1, n2, n3, n4,...............)   #  Replace with actual subsample sizes (e.g., c(10, 25, 40, 57) for C. innoxius female data)
+
+# Run MCMC for each subsample (example for a female dataset stored in WingAlignedArray)
+# 'initial'   -> starting parameter value (e.g., 25)
+# 'tune'      -> tuning parameter (e.g., rep(7,1))
+# 'WingAlignedArray' -> replace with your own aligned landmark dataset (3D array)
+# 'n'         -> each subsample size from n_values
+# 'Nsample'   -> total MCMC iterations (e.g., 20000 or 50000)
+
+#MCMCpostPsample2D=function(initial, tune, myData, Nsample/iterations)
+#MCMC_n <- MCMCpostPsample2D(initial, tune, myData = WingAlignedArray[,,1:n], Nsample)         #  initial , tune , Nsample can be adjusted
+#XXtt_Nsample.n = MCMCpostPsample2D(initial, tune, XXqq[,,1:n], Nsample)                      # XXqq[,,1:n] → input landmark dataset (Procrustes-aligned data for first n specimens
+# XXtt_Nsample.n1 → MCMC output for first subsample
+# XXtt_Nsample.n2 → for second subsample, and so on
+ 
+####Example for C. innoxius female dataset####
+n_values <- c(10, 25, 40, 57)
+IFtt20000.10=MCMCpostPsample2D(25,rep(7,1),IFqq[,,1:10],20000)  #IFqq[,,1:10] → Procrustes-aligned data for first 10 specimens   
+IFtt20000.25=MCMCpostPsample2D(25,rep(7,1),IFqq[,,1:25],20000)
+IFtt20000.40=MCMCpostPsample2D(25,rep(7,1),IFqq[,,1:40],20000)
+IFtt20000.57=MCMCpostPsample2D(25,rep(7,1),IFqq[,,1:57],20000)
+
+# Store all results into a single list
+XX_list <- list(XXtt_Nsample.n1, XXtt_Nsample.n2, XXtt_Nsample.n3, XXtt_Nsample.n4,.........XXtt_Nsample.nth)
+### For example ###
+#female_list <- list(IFtt20000.10, IFtt20000.25, IFtt20000.40, IFtt20000.57)
+
+# Combine all results column-wise into one object
+XXtt_Nsample <- do.call(cbind, XX_list)
+### for example###
+IFtt20000 <- do.call(cbind, female_list)
+
+# -----------------------------
+# 7. Export Results
+# -----------------------------
+write.csv(posterior_female$variance, "posterior_variance_female.csv")
+write.csv(posterior_male$variance, "posterior_variance_male.csv")
+
+#--------------------------------
+# 8. MCMC Posterior σ̃ Plot
+#---------------------------------
+#par(mar = c(5, 4, 4, 2))                                                              # Adjust margin only if needed
+# data_used <- XXtt_Nsample                                                            # change dataset,burn-in, xlim, ylim, lwd col accordingly
+#plot(density(data_used[-(1:burn),1]), xlim=c(0,30), ylim=c(0,1.0),
+     col=colset[1],
+     xlab=expression(paste(tilde(sigma)~~("\n data : ")~.(species_lab))),
+     ylab="MCMC Posterior Sigma Density",
+     main=expression(paste(bold("MCMC posterior of ")~~tilde(sigma)~~(" Procrustes Variance"))))
+
+# Add density lines                   
+for (i in 2:length(n_vals)) {
+  lines(density(data_used[-(1:burn),i]), col=colset[i], lwd=2)
+}
+
+# repeat for each sample sizes
+
+# Add mean line (from total sample column)
+abline(v=mean(data_used[-(1:burn), length(n_vals)]), col=mean_col, lwd=2, lty=2)
+
+# Add legend
+legend("topright", cex=0.6,
+       legend=c(paste0("n=", n_vals), "mean"),
+       lty=1, col=c(colset, mean_col),
+       lwd=c(rep(1, length(n_vals)), 2))
+
+grid()
+
+###Example "Plot C. innoxius female vs male wings posterior"###
+#burn <- 4000
+#bw_opt <- 0.15
+# Base plot: Female wings (IFtt)
+plot(density(IFtt20000[-(1:burn), 4], bw = bw_opt),xlim = c(0, 30), ylim = c(0, 1.0),col = "orange1", lwd = 4,xlab = expression(tilde(sigma) * "  (data: " * italic("C. innoxius") * " male vs female wings)"),  ylab = "",  # for Suppression of default ylab if needed or use default set to add the y lab
+  main = expression(paste(bold("MCMC Posterior of "), tilde(sigma), " (Procrustes Variance)")),cex.lab = 2.0,cex.axis = 2.0,cex.main = 2.0)
+
+# Manually add y-axis label, precisely positioned if needed
+mtext("MCMC Posterior Sigma Density", side = 2, line = 2.6, cex = 1.7)
+
+# Add posterior for male wings (IFtt)
+lines(density(IMtt20000[-(1:burn), 4], bw = bw_opt), col = "darkblue", lwd = 4)
+
+# Add mean (vertical lines)
+abline(v = mean(IFtt20000[-(1:burn), 4]), col = "red3", lwd = 3, lty = 3)
+abline(v = mean(IMtt20000[-(1:burn), 4]), col = "green3", lwd = 3, lty = 3)
+
+# Combined legend
+legend(
+  "topleft", cex = 1.1,
+  legend = c("Female (n = 57)", "Male (n = 48)", "Female Mean", "Male Mean"),
+  col = c("orange1", "darkblue", "red3", "green3"),
+  lty = c(1, 1, 3, 3),
+  lwd = c(3, 3, 3, 3)
+)
+
+# Column 4 corresponds to full-sample posterior (e.g., n = 57 for C. innoxius female; n=48 for C. innoxius male)
+
+# Add background grid
+grid()
+#-------------------------------------
+# 9. For MCMC Trace Plots
+#-------------------------------------
+# Install & load coda
+# install.packages("coda")
+library(coda)
+
+# --- Combine MCMC samples (edit your dataset names) 
+###Example for C.innoxius
+data_F <- cbind(Ftt10000.10, Ftt10000.20, Ftt10000.30, Ftt10000.45)  # e.g., female
+data_M <- cbind(Mtt10000.10, Mtt10000.20, Mtt10000.30, Mtt10000.37)  # e.g., male
+
+# --- Convert to mcmc objects ---
+mcmc_F <- as.mcmc(data_F)
+mcmc_M <- as.mcmc(data_M)
+
+# --- Trace plots ---
+traceplot(mcmc_F, main = "MCMC Trace Plot (data : C. peregrinus female wings)", col = "orange1") 
+traceplot(mcmc_M, main = "MCMC Trace Plot (data : C. peregrinus male wings)", col = "darkblue")
+
+#--------------------------------------
+#10. Compute Posterior Means
+#--------------------------------------
+Species_posterior <- XXtt_Nsample[-(1:burn)]   #Each posterior vector stores the posterior samples (likely of Procrustes variance σ̃²) for each species
+mean_bp <- mean(Species_posterior)
+
+#------------------------------------------
+# 11. 95% credible interval calculation
+#------------------------------------------
+Species_posterior <- XXtt_Nsample[-(1:burn), param]   #param -> column corresponds to  final/full-sample posterior distribution
+# 95% credible interval
+ci_Species <- quantile(Species_posterior, probs = c(0.025, 0.975))
+print(ci_Species)
+
+### Example#####
+IFtt_posterior <- IFtt20000[-(1:10000), 4]  
+# 'param = 4' → selects the posterior samples corresponding to the full dataset (e.g., 4th column)
+# each column represents one subsample size (n=10, 25, 40, 57 for C. innoxius female)
+ci_innoxius _female <- quantile(IFtt_posterior, probs = c(0.025, 0.975))
+print(ci_innoxius_female)
+
+#----------------------------------------
+# 12. Hellinger Distance calculation
+#----------------------------------------
+
+# --- Robust Hellinger function ---
+hellinger <- function(p, q) {
+  p <- as.numeric(p); q <- as.numeric(q)
+  p[p < 0] <- 0; q[q < 0] <- 0
+  if (sum(p) == 0) p <- p + 1e-8
+  if (sum(q) == 0) q <- q + 1e-8
+  p <- p / sum(p)
+  q <- q / sum(q)
+  (1 / sqrt(2)) * sqrt(sum((sqrt(p) - sqrt(q))^2))
+}
+
+# --- General Hellinger computation ---
+compute_hellinger <- function(post1, post2, label1 = "Group 1", label2 = "Group 2") {
+  n_features <- ncol(post1)
+  hellinger_values <- numeric(n_features)
+  
+  for (i in 1:n_features) {
+    col1 <- post1[, i]
+    col2 <- post2[, i]
+    
+    # Clean data
+    col1 <- col1[!is.na(col1)]
+    col2 <- col2[!is.na(col2)]
+    if (length(unique(col1)) == 1) col1 <- col1 + rnorm(length(col1), 0, 1e-8)
+    if (length(unique(col2)) == 1) col2 <- col2 + rnorm(length(col2), 0, 1e-8)
+    
+    # KDE density estimation
+    dens1 <- density(col1, n = 512)
+    dens2 <- density(col2, n = 512)
+    
+    # Interpolate on common grid
+    common_x <- seq(min(dens1$x, dens2$x), max(dens1$x, dens2$x), length.out = 512)
+    interp1 <- approx(dens1$x, dens1$y, xout = common_x, rule = 2)$y
+    interp2 <- approx(dens2$x, dens2$y, xout = common_x, rule = 2)$y
+    
+    # Compute Hellinger distance
+    hellinger_values[i] <- hellinger(interp1, interp2)
+  }
+  
+  cat("Hellinger distances for each parameter:\n")
+  print(hellinger_values)
+  cat("\nMean Hellinger distance (overall difference between",
+      label1, "and", label2, "):", mean(hellinger_values), "\n")
+  
+  return(hellinger_values)
+}
+
+# --- Example usage ---
+# compute_hellinger(IFtt20000, IMtt20000, "C. innoxius ♀", "C. innoxius ♂")
+# compute_hellinger(Itt20000, Ptt20000, "C. innoxius", "C. peregrinus")
+# The Hellinger distance quantifies the divergence between two posterior distributions (values closer to 0 = more similar)
+# -----------------------------
+# End of Template
+# -----------------------------
+# This generalized framework can be applied to any species or dataset by replacing:
+#   - Input Excel files (landmark coordinates)
+#   - Sample sizes and array dimensions
+#   - MCMC tuning, burn-in, and iteration parameters
+#   - Labels in plots and legends
+
